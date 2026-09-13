@@ -3,23 +3,29 @@ const AppError = require('../utils/AppError');
 const { getAccountBalance } = require('./ledger.service');
 const { getCachedTransaction, cacheTransaction } = require('./idempotency.service');
 
-// NOTE: this does not yet lock the source account row, so two concurrent
-// requests for DIFFERENT idempotency keys against the same account can
-// both read the same "sufficient funds" answer before either writes - a
-// real race. Row-level locking is added in the next phase (concurrency-
-// safe balance handling); this version already gets per-request atomicity
-// right (all-or-nothing) via one Prisma $transaction.
+// Concurrency safety: before checking or moving any money, we lock both
+// account rows with SELECT ... FOR UPDATE, always in ascending id order.
+// - The lock means a second concurrent transaction touching either row
+//   must wait until this one commits or rolls back, so it always reads
+//   the true post-transfer balance - not a stale one. This is what
+//   prevents two simultaneous transfers from both thinking an account has
+//   enough funds when only one of them actually does.
+// - The fixed (ascending id) lock order means two transfers moving money
+//   in OPPOSITE directions between the same two accounts can never
+//   deadlock waiting on each other's lock - both always try to lock the
+//   lower id first.
 async function runTransaction({ idempotency_key, amount, source_account_id, destination_account_id }) {
   return prisma.$transaction(async (tx) => {
-    const [sourceAccount, destinationAccount] = await Promise.all([
-      tx.account.findUnique({ where: { id: source_account_id } }),
-      tx.account.findUnique({ where: { id: destination_account_id } }),
-    ]);
+    const [firstId, secondId] = [source_account_id, destination_account_id].sort();
+    const lockedRows = await tx.$queryRaw`
+      SELECT id FROM accounts WHERE id IN (${firstId}, ${secondId}) ORDER BY id FOR UPDATE
+    `;
+    const foundIds = new Set(lockedRows.map((row) => row.id));
 
-    if (!sourceAccount) {
+    if (!foundIds.has(source_account_id)) {
       throw new AppError(404, 'account_not_found', 'source_account_id does not exist');
     }
-    if (!destinationAccount) {
+    if (!foundIds.has(destination_account_id)) {
       throw new AppError(404, 'account_not_found', 'destination_account_id does not exist');
     }
 
@@ -65,7 +71,7 @@ async function runTransaction({ idempotency_key, amount, source_account_id, dest
     });
 
     return transaction;
-  });
+  }, { timeout: 10000 }); // headroom for lock waits under concurrent load
 }
 
 // Returns { transaction, replayed }. replayed=true means this call did NOT
