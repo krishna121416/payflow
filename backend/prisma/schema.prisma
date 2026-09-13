@@ -1,0 +1,82 @@
+// PayFlow database schema.
+//
+// Three models implement double-entry accounting:
+//   Account         - a wallet with a cached balance
+//   Transaction      - one payment attempt, identified by an idempotency key
+//   LedgerEntry      - immutable debit/credit rows; the source of truth for balances
+//
+// See README.md for the accounting rationale (why ledger > cached balance).
+
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+enum AccountType {
+  personal
+  business
+}
+
+enum TransactionStatus {
+  completed
+  failed
+}
+
+enum EntryType {
+  debit
+  credit
+}
+
+model Account {
+  id           String      @id @default(uuid())
+  owner_name   String
+  account_type AccountType
+  // Cached balance for fast reads. NOT the source of truth - see LedgerEntry.
+  // Kept in sync inside the same DB transaction that writes ledger entries.
+  balance      Decimal     @default(0) @db.Decimal(18, 2)
+  created_at   DateTime    @default(now())
+
+  ledger_entries         LedgerEntry[]
+  transactions_sent      Transaction[] @relation("SourceAccount")
+  transactions_received  Transaction[] @relation("DestinationAccount")
+
+  @@map("accounts")
+}
+
+model Transaction {
+  id                   String            @id @default(uuid())
+  // Client-supplied key. The unique constraint is what makes retries safe
+  // even if the idempotency check in application code is bypassed or races.
+  idempotency_key      String            @unique
+  status               TransactionStatus
+  amount               Decimal           @db.Decimal(18, 2)
+
+  source_account_id      String
+  source_account         Account @relation("SourceAccount", fields: [source_account_id], references: [id])
+
+  destination_account_id String
+  destination_account    Account @relation("DestinationAccount", fields: [destination_account_id], references: [id])
+
+  created_at           DateTime          @default(now())
+
+  ledger_entries       LedgerEntry[]
+
+  @@map("transactions")
+}
+
+model LedgerEntry {
+  id             String      @id @default(uuid())
+  transaction_id String
+  transaction    Transaction @relation(fields: [transaction_id], references: [id])
+  account_id     String
+  account        Account     @relation(fields: [account_id], references: [id])
+  entry_type     EntryType
+  amount         Decimal     @db.Decimal(18, 2)
+  created_at     DateTime    @default(now())
+
+  @@map("ledger_entries")
+}
