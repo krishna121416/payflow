@@ -32,7 +32,7 @@ export default function App() {
       <div className="grid">
         <AccountsSection accounts={accounts} onChanged={reload} />
         <TransactionForm accounts={accounts} onChanged={reload} />
-        <TransactionHistory accounts={accounts} />
+        <TransactionHistory accounts={accounts} refreshSignal={refreshSignal} />
         <ReconciliationPanel refreshSignal={refreshSignal} />
       </div>
     </div>
