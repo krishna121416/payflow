@@ -19,6 +19,10 @@ datasource db {
 enum AccountType {
   personal
   business
+  // Internal-only. Represents the "other side" of an account's opening
+  // balance so double-entry accounting holds even at account creation.
+  // Never created via the public API.
+  system
 }
 
 enum TransactionStatus {
