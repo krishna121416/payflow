@@ -10,6 +10,13 @@ function errorHandler(err, req, res, next) {
     return res.status(err.statusCode).json({ error: err.code, message: err.message });
   }
 
+  // express.json() throws this when the request body isn't valid JSON.
+  // That's a client mistake, not a server bug, so it belongs in the same
+  // clean 400 shape as our own validation errors - not a leaked 500.
+  if (err.type === 'entity.parse.failed') {
+    return res.status(400).json({ error: 'validation_error', message: 'Request body must be valid JSON' });
+  }
+
   // Unexpected/unhandled error - log full detail server-side, but never
   // leak stack traces or DB internals to the client.
   console.error(err);
