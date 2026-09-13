@@ -22,4 +22,25 @@ async function getAccountBalance(accountId, client = prisma) {
   return creditTotal.minus(debitTotal);
 }
 
-module.exports = { getAccountBalance };
+// Independently sums BOTH sides of the entire ledger, across all accounts.
+// This is what makes reconciliation meaningful: it never looks at
+// accounts.balance (a cache), only at the raw debit/credit rows every
+// transaction is required to write in pairs.
+async function getLedgerTotals() {
+  const [debits, credits] = await Promise.all([
+    prisma.ledgerEntry.aggregate({
+      where: { entry_type: 'debit' },
+      _sum: { amount: true },
+    }),
+    prisma.ledgerEntry.aggregate({
+      where: { entry_type: 'credit' },
+      _sum: { amount: true },
+    }),
+  ]);
+
+  const totalDebits = debits._sum.amount || new Prisma.Decimal(0);
+  const totalCredits = credits._sum.amount || new Prisma.Decimal(0);
+  return { totalDebits, totalCredits };
+}
+
+module.exports = { getAccountBalance, getLedgerTotals };
