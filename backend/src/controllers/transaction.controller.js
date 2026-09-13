@@ -1,6 +1,7 @@
 const AppError = require('../utils/AppError');
 const { isValidMonetaryAmount } = require('../utils/money');
 const { requireUuid } = require('../utils/validation');
+const { SYSTEM_EQUITY_ACCOUNT_ID } = require('../config/constants');
 const transactionService = require('../services/transaction.service');
 
 async function createTransaction(req, res) {
@@ -19,6 +20,14 @@ async function createTransaction(req, res) {
 
   if (source_account_id === destination_account_id) {
     throw new AppError(400, 'validation_error', 'source_account_id and destination_account_id must differ');
+  }
+
+  // SYSTEM_EQUITY only ever moves money as part of account creation
+  // (account.service.js). It must never be reachable as a party to an
+  // ordinary payment, or a client could deposit into or drain it directly
+  // through this endpoint.
+  if (source_account_id === SYSTEM_EQUITY_ACCOUNT_ID || destination_account_id === SYSTEM_EQUITY_ACCOUNT_ID) {
+    throw new AppError(400, 'validation_error', 'account_id refers to an internal system account and cannot be used here');
   }
 
   const { transaction, replayed } = await transactionService.createTransaction({
