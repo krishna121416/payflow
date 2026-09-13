@@ -21,14 +21,16 @@ async function createTransaction(req, res) {
     throw new AppError(400, 'validation_error', 'source_account_id and destination_account_id must differ');
   }
 
-  const transaction = await transactionService.createTransaction({
+  const { transaction, replayed } = await transactionService.createTransaction({
     idempotency_key: idempotency_key.trim(),
     amount,
     source_account_id,
     destination_account_id,
   });
 
-  res.status(201).json(transaction);
+  // 200 = "here is the result of a payment that already happened" (no money
+  // moved this call). 201 = a new payment was just created.
+  res.status(replayed ? 200 : 201).json(transaction);
 }
 
 module.exports = { createTransaction };
