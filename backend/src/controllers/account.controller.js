@@ -42,10 +42,6 @@ async function createAccount(req, res) {
   res.status(201).json(account);
 }
 
-// Not part of the original API spec, but the frontend's "Accounts" section
-// needs some way to list accounts to display. Balance is computed from the
-// ledger per account, same as the single-account balance endpoint, so the
-// dashboard never shows a number that could drift from the cached column.
 async function listAccounts(req, res) {
   const accounts = await prisma.account.findMany({
     where: { account_type: { not: 'system' } },
@@ -65,11 +61,7 @@ async function listAccounts(req, res) {
   res.json(withBalances);
 }
 
-// Deliberately does NOT read accounts.balance. That column is a cached
-// convenience for fast lookups elsewhere; the ledger is the source of
-// truth, so this endpoint independently recomputes credits - debits every
-// time. If a bug ever let the cached column drift, this endpoint would
-// still report the correct number.
+// Recomputes from ledger entries rather than reading accounts.balance.
 async function getBalance(req, res) {
   const { id } = req.params;
 

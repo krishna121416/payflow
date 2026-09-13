@@ -4,12 +4,10 @@ const redisClient = require('../config/redis');
 
 const router = express.Router();
 
-// Simple liveness check - confirms the API process is up and responding.
 router.get('/health', (req, res) => {
   res.json({ status: 'ok' });
 });
 
-// Confirms Prisma can actually reach PostgreSQL, not just that the API is up.
 router.get('/health/db', async (req, res) => {
   try {
     await prisma.$queryRaw`SELECT 1`;
@@ -19,7 +17,6 @@ router.get('/health/db', async (req, res) => {
   }
 });
 
-// Confirms Redis (the idempotency cache) is reachable.
 router.get('/health/redis', async (req, res) => {
   try {
     await redisClient.ping();

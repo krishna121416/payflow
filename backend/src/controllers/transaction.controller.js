@@ -22,10 +22,6 @@ async function createTransaction(req, res) {
     throw new AppError(400, 'validation_error', 'source_account_id and destination_account_id must differ');
   }
 
-  // SYSTEM_EQUITY only ever moves money as part of account creation
-  // (account.service.js). It must never be reachable as a party to an
-  // ordinary payment, or a client could deposit into or drain it directly
-  // through this endpoint.
   if (source_account_id === SYSTEM_EQUITY_ACCOUNT_ID || destination_account_id === SYSTEM_EQUITY_ACCOUNT_ID) {
     throw new AppError(400, 'validation_error', 'account_id refers to an internal system account and cannot be used here');
   }
@@ -37,8 +33,6 @@ async function createTransaction(req, res) {
     destination_account_id,
   });
 
-  // 200 = "here is the result of a payment that already happened" (no money
-  // moved this call). 201 = a new payment was just created.
   res.status(replayed ? 200 : 201).json(transaction);
 }
 

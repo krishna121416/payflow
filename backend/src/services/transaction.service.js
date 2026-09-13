@@ -3,17 +3,10 @@ const AppError = require('../utils/AppError');
 const { getAccountBalance } = require('./ledger.service');
 const { getCachedTransaction, cacheTransaction } = require('./idempotency.service');
 
-// Concurrency safety: before checking or moving any money, we lock both
-// account rows with SELECT ... FOR UPDATE, always in ascending id order.
-// - The lock means a second concurrent transaction touching either row
-//   must wait until this one commits or rolls back, so it always reads
-//   the true post-transfer balance - not a stale one. This is what
-//   prevents two simultaneous transfers from both thinking an account has
-//   enough funds when only one of them actually does.
-// - The fixed (ascending id) lock order means two transfers moving money
-//   in OPPOSITE directions between the same two accounts can never
-//   deadlock waiting on each other's lock - both always try to lock the
-//   lower id first.
+// Locks both account rows (SELECT ... FOR UPDATE, ascending id order)
+// before checking or moving any money. The lock serializes concurrent
+// transfers touching either account; the fixed lock order avoids deadlock
+// between transfers moving money in opposite directions.
 async function runTransaction({ idempotency_key, amount, source_account_id, destination_account_id }) {
   return prisma.$transaction(async (tx) => {
     const [firstId, secondId] = [source_account_id, destination_account_id].sort();
@@ -71,12 +64,11 @@ async function runTransaction({ idempotency_key, amount, source_account_id, dest
     });
 
     return transaction;
-  }, { timeout: 10000 }); // headroom for lock waits under concurrent load
+  }, { timeout: 10000 });
 }
 
-// Returns { transaction, replayed }. replayed=true means this call did NOT
-// move any money - it just handed back the result of a transaction that
-// already happened, identified by idempotency_key.
+// Returns { transaction, replayed }. replayed=true means no money moved -
+// this just returns the result of a transaction that already happened.
 async function createTransaction(input) {
   const { idempotency_key } = input;
 
@@ -96,11 +88,9 @@ async function createTransaction(input) {
     await cacheTransaction(idempotency_key, transaction);
     return { transaction, replayed: false };
   } catch (err) {
-    // Two requests with the same NEW idempotency_key raced each other past
-    // the findUnique check above; Postgres's unique constraint is the
-    // final arbiter and rejected the loser with P2002. The loser did not
-    // fail the payment - it just lost a race to record it - so fetch and
-    // return the winner's result instead of surfacing a conflict.
+    // Two requests raced past the findUnique check above with the same
+    // new key; Postgres's unique constraint rejected the loser with
+    // P2002. Return the winner's result instead of a conflict error.
     if (err.code === 'P2002') {
       const winner = await prisma.transaction.findUnique({ where: { idempotency_key } });
       if (winner) {

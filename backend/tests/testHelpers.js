@@ -1,8 +1,6 @@
 const request = require('supertest');
 const app = require('../src/app');
 
-// Unique per test run so parallel test files (and reruns) never collide on
-// idempotency_key or owner_name uniqueness.
 function uniqueSuffix() {
   return `${Date.now()}-${Math.random().toString(36).slice(2, 8)}`;
 }

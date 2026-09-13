@@ -1,10 +1,8 @@
 const prisma = require('../config/prisma');
 const { Prisma } = require('@prisma/client');
 
-// The ledger is the source of truth for balance, not accounts.balance.
-// Balance = total credits - total debits for that account. Accepts an
-// optional transaction client so callers can compute this consistently
-// inside the same DB transaction as a funds check.
+// Balance = total credits - total debits. Accepts an optional transaction
+// client so this can run consistently inside a locked $transaction.
 async function getAccountBalance(accountId, client = prisma) {
   const [credits, debits] = await Promise.all([
     client.ledgerEntry.aggregate({
@@ -22,10 +20,6 @@ async function getAccountBalance(accountId, client = prisma) {
   return creditTotal.minus(debitTotal);
 }
 
-// Independently sums BOTH sides of the entire ledger, across all accounts.
-// This is what makes reconciliation meaningful: it never looks at
-// accounts.balance (a cache), only at the raw debit/credit rows every
-// transaction is required to write in pairs.
 async function getLedgerTotals() {
   const [debits, credits] = await Promise.all([
     prisma.ledgerEntry.aggregate({

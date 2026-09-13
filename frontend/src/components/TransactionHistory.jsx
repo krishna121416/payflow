@@ -1,9 +1,6 @@
 import { useEffect, useState } from 'react';
 import { api } from '../api';
 
-// The backend only exposes history scoped to one account
-// (GET /accounts/:id/transactions), so the dashboard lets you pick which
-// account's history to view rather than inventing a global endpoint.
 export function TransactionHistory({ accounts, refreshSignal }) {
   const [accountId, setAccountId] = useState('');
   const [transactions, setTransactions] = useState([]);
@@ -15,9 +12,6 @@ export function TransactionHistory({ accounts, refreshSignal }) {
     }
   }, [accounts, accountId]);
 
-  // Also refetch on refreshSignal, not just when the selected account
-  // changes - otherwise a newly created transaction for the CURRENTLY
-  // selected account wouldn't show up until you switched accounts and back.
   useEffect(() => {
     if (!accountId) return;
     setError(null);
