@@ -60,4 +60,32 @@ async function getBalance(req, res) {
   res.json({ account_id: id, balance: balance.toFixed(2) });
 }
 
-module.exports = { createAccount, getBalance };
+async function getTransactionHistory(req, res) {
+  const { id } = req.params;
+
+  const account = await prisma.account.findUnique({ where: { id } });
+  if (!account) {
+    throw new AppError(404, 'account_not_found', 'account not found');
+  }
+
+  const transactions = await prisma.transaction.findMany({
+    where: {
+      OR: [{ source_account_id: id }, { destination_account_id: id }],
+    },
+    orderBy: { created_at: 'desc' },
+  });
+
+  res.json({
+    account_id: id,
+    transactions: transactions.map((t) => ({
+      id: t.id,
+      amount: t.amount,
+      source_account_id: t.source_account_id,
+      destination_account_id: t.destination_account_id,
+      status: t.status,
+      created_at: t.created_at,
+    })),
+  });
+}
+
+module.exports = { createAccount, getBalance, getTransactionHistory };
