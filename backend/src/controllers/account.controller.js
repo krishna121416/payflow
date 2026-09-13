@@ -47,6 +47,29 @@ async function createAccount(req, res) {
 // truth, so this endpoint independently recomputes credits - debits every
 // time. If a bug ever let the cached column drift, this endpoint would
 // still report the correct number.
+// Not part of the original API spec, but the frontend's "Accounts" section
+// needs some way to list accounts to display. Balance is computed from the
+// ledger per account, same as the single-account balance endpoint, so the
+// dashboard never shows a number that could drift from the cached column.
+async function listAccounts(req, res) {
+  const accounts = await prisma.account.findMany({
+    where: { account_type: { not: 'system' } },
+    orderBy: { created_at: 'asc' },
+  });
+
+  const withBalances = await Promise.all(
+    accounts.map(async (account) => ({
+      id: account.id,
+      owner_name: account.owner_name,
+      account_type: account.account_type,
+      balance: (await getAccountBalance(account.id)).toFixed(2),
+      created_at: account.created_at,
+    }))
+  );
+
+  res.json(withBalances);
+}
+
 async function getBalance(req, res) {
   const { id } = req.params;
 
@@ -88,4 +111,4 @@ async function getTransactionHistory(req, res) {
   });
 }
 
-module.exports = { createAccount, getBalance, getTransactionHistory };
+module.exports = { createAccount, listAccounts, getBalance, getTransactionHistory };
