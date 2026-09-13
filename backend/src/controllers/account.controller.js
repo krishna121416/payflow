@@ -1,6 +1,8 @@
 const AppError = require('../utils/AppError');
 const { isValidMonetaryAmount } = require('../utils/money');
 const accountService = require('../services/account.service');
+const { getAccountBalance } = require('../services/ledger.service');
+const prisma = require('../config/prisma');
 
 const VALID_ACCOUNT_TYPES = ['personal', 'business'];
 
@@ -40,4 +42,22 @@ async function createAccount(req, res) {
   res.status(201).json(account);
 }
 
-module.exports = { createAccount };
+// Deliberately does NOT read accounts.balance. That column is a cached
+// convenience for fast lookups elsewhere; the ledger is the source of
+// truth, so this endpoint independently recomputes credits - debits every
+// time. If a bug ever let the cached column drift, this endpoint would
+// still report the correct number.
+async function getBalance(req, res) {
+  const { id } = req.params;
+
+  const account = await prisma.account.findUnique({ where: { id } });
+  if (!account) {
+    throw new AppError(404, 'account_not_found', 'account not found');
+  }
+
+  const balance = await getAccountBalance(id);
+
+  res.json({ account_id: id, balance: balance.toFixed(2) });
+}
+
+module.exports = { createAccount, getBalance };
